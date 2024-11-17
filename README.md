@@ -12,10 +12,20 @@ This project demonstrates a real-time voice assistant API that captures user act
 - Checks availability of rooms by querying the blockchain
 - Mints NFTs for reservations if available
 
-   
-### Running the Project
 
-## Usage
+## Deployments
+```js
+const networks = [
+  { networkId: 545, networkName: "Flow Testnet", address: "0x6d75b3F4FFE3C87495c7534e2166BFCe25ff9a95" },
+  { networkId: 5003, networkName: 'Mantle Sepolia Testnet', address: "0x6d75b3F4FFE3C87495c7534e2166BFCe25ff9a95" },
+  { networkId: 48899, networkName: "Zircuit Testnet", address: "0x6d75b3F4FFE3C87495c7534e2166BFCe25ff9a95" },
+  { networkId: 84532, networkName: 'Base Sepolia', address: "0x6d75b3F4FFE3C87495c7534e2166BFCe25ff9a95" },
+  { networkId: 534351, networkName: 'Scroll Sepolia', address: "0x6d75b3F4FFE3C87495c7534e2166BFCe25ff9a95" },
+  { networkId: 11155111, networkName: "Sepolia", address: "0x3B831CfE1A113b4cb081c74ba146b1484f1D1917" },
+];
+```
+
+### Running the Project
 
 1. Start the local blockchain:
    ```sh
