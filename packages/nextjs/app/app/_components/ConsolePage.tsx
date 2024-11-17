@@ -14,12 +14,13 @@ import { RealtimeClient } from '@openai/realtime-api-beta';
 import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
 import { instructions } from '../utils/conversation_config.js';
+import { dateToId, idToDate } from '../utils/dateToId.js';
 
 import { X, Zap } from 'react-feather';
 import { Button } from '../components/button/Button';
 
 import './ConsolePage.scss';
-import { useScaffoldContract } from "~~/hooks/scaffold-eth";
+import { useContract } from '../contractContext';
 
 const LOCAL_RELAY_SERVER_URL: string =
   process.env.NEXT_PUBLIC_REACT_APP_LOCAL_RELAY_SERVER_URL || '';
@@ -83,9 +84,7 @@ export function ConsolePage() {
   const [items, setItems] = useState<ItemType[]>([]);
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const { data: yourContract } = useScaffoldContract({
-    contractName: "YourContract",
-  });
+  const { available, mint } = useContract();
   /**
    * Connect to conversation:
    * WavRecorder taks speech input, WavStreamPlayer output, client is API client
@@ -112,7 +111,7 @@ export function ConsolePage() {
     client.sendUserMessageContent([
       {
         type: `input_text`,
-        text: `Hello! Welcome to out Blockchain hotel. How can I help you today?`,
+      text: `Hello!`,
         
       },
     ]);
@@ -150,8 +149,12 @@ export function ConsolePage() {
       await wavRecorder.pause();
     }
     client.updateSession({
-      turn_detection: value === 'none' ? null : { type: 'server_vad' },
-    });
+      turn_detection: value === 'none' ? null : {
+        "type": "server_vad",
+        "threshold": 0.9,
+        "prefix_padding_ms": 1000,
+        "silence_duration_ms": 500
+    }});
     if (value === 'server_vad' && client.isConnected()) {
       await wavRecorder.record((data) => client.appendInputAudio(data.mono));
     }
@@ -195,7 +198,7 @@ export function ConsolePage() {
     // Cleanup timeouts
     return () => timeouts.forEach(timeout => clearTimeout(timeout));
   }, [items]);
-
+  // const checkAvailability = useCallback(, [available])
   /**
    * Core RealtimeClient and audio capture setup
    * Set all of our instructions, tools, events and more
@@ -213,22 +216,58 @@ export function ConsolePage() {
       {
         name: 'check_availability',
         description:
-          'Check the availability of rooms in a hotel at specific dates',
+          'Check the availability of rooms in a hotel at specific dates and return a list of unavailable days',
         parameters: {
           type: 'object',
           properties: {
-            checkin_date: { type: 'string', format: 'date' },
-            checkout_date: { type: 'string', format: 'date' },
+            checkin: { type: 'string', format: 'date' },
+            checkout: { type: 'string', format: 'date' },
           },
         },
       },
-      async ({ checkin_date, checkout_date }: { [key: string]: any }) => {
-        console.log('check_availability', checkin_date, checkout_date);
-        const available = await yourContract?.read.available([1n]);
-        console.log('available', available);
-        return {
-          availability: available,
+      async ({checkin,  checkout}: {checkin: string, checkout: string}) => {
+        console.log('check_availability', checkin, checkout);
+        const checkin_date = new Date(`${checkin}`);
+        const checkout_date = new Date(`${checkout}`);
+        console.log('check_availability', `${checkin}`, checkin_date, checkout_date, dateToId(checkin_date), dateToId(checkout_date));
+    
+        let notAvailable = [];
+        for (let i = dateToId(checkin_date); i < dateToId(checkout_date); i++) {
+          console.log('i', i);
+          let dayAvailable = await available(BigInt(i));
+          console.log('i, available', i , dayAvailable);
+          if (!dayAvailable || ((i%3) === 0)) {
+            notAvailable.push(i);
+          }
+        }
+        console.log('notAvailable', notAvailable);
+        const ret = {
+          availability: notAvailable.length ? 'not available' : 'available',
+          daysNotAvailable: notAvailable.map(idToDate),
         };
+        console.log('ret', ret);
+        return ret;
+      }
+    );
+    client.addTool(
+      {
+        name: 'reserve_room',
+        description:
+          'Reserve a room in a hotel at specific dates',
+        parameters: {
+          type: 'object',
+          properties: {
+            checkin: { type: 'string', format: 'date' },
+            checkout: { type: 'string', format: 'date' },
+          },
+        },
+      },
+      async ({checkin,  checkout}: {checkin: string, checkout: string}) => {
+        const checkin_date = new Date(`${checkin}`);
+        const checkout_date = new Date(`${checkout}`);
+        for (let i = dateToId(checkin_date); i < dateToId(checkout_date); i++) {
+          mint(BigInt(i));
+        }
       }
     );
     // handle realtime events from client + server for event logging
@@ -274,99 +313,69 @@ export function ConsolePage() {
       // cleanup; resets to defaults
       client.reset();
     };
-  }, [yourContract?.read]);
+  }, [available]);
 
   /**
    * Render the application
    */
   return (
     <div data-component="ConsolePage">
-      <div className="content-main mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-        <div className="content-logs">
-          <div className="content-block conversation">
-            <div 
-              className="content-block-body overflow-y-auto max-h-[calc(100vh-200px)]" 
-              data-conversation-content
-            >
-              {!items.length && (
-                <div className="empty-state">
-                  <h2>Welcome to the Blockchain Hotel</h2>
-                  <p>Your Voice Assistant in the World of Blockchain</p>
-                </div>
-              )}
-              {items.map((conversationItem, i) => {
-                return (
-                  <div className="conversation-item" key={conversationItem.id}>
-                    <div className={`speaker ${conversationItem.role || ''}`}>
-                      <div>
-                        {(conversationItem.role || conversationItem.type).replaceAll(
-                          '_',
-                          ' '
-                        )}
-                      </div>
-                    </div>
-                    <div className={`speaker-content`}>
-                      {!conversationItem.formatted.tool &&
-                        conversationItem.role === 'user' && (
-                          <div>
-                            {conversationItem.formatted.transcript ||
-                              (conversationItem.formatted.audio?.length
-                                ? '(awaiting transcript)'
-                                : conversationItem.formatted.text ||
-                                  '(item sent)')}
-                          </div>
-                        )}
-                      {!conversationItem.formatted.tool &&
-                        conversationItem.role === 'assistant' && (
-                          <div>
-                            {conversationItem.formatted.transcript ||
-                              conversationItem.formatted.text ||
-                              '(truncated)'}
-                          </div>
-                        )}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+        <div className="card bg-base-100 shadow-xl">
+          <div className="card-body overflow-y-auto max-h-[calc(100vh-200px)]" data-conversation-content>
+            {!items.length && (
+              <div className="empty-state text-center">
+                <h3 className="text-2xl font-bold text-black">Welcome to the Blockchain Hotel</h3>
+                <p>Your Voice Assistant in the World of Blockchain</p>
+              </div>
+            )}
+            {items.map((conversationItem, i) => {
+              return (
+                <div className="conversation-item" key={conversationItem.id}>
+                  <div className={`badge ${conversationItem.role || ''}`}>
+                    <div>
+                      {(conversationItem.role || conversationItem.type).replaceAll('_', ' ')}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="badge-content">
+                    {!conversationItem.formatted.tool && conversationItem.role === 'user' && (
+                      <div>
+                        {conversationItem.formatted.transcript ||
+                          (conversationItem.formatted.audio?.length
+                            ? '(awaiting transcript)'
+                            : conversationItem.formatted.text || '(item sent)')}
+                      </div>
+                    )}
+                    {!conversationItem.formatted.tool && conversationItem.role === 'assistant' && (
+                      <div>
+                        {conversationItem.formatted.transcript ||
+                          conversationItem.formatted.text || '(truncated)'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="content-actions">
+          <div className="card-actions justify-center">
             {!isConnected ? (
               <Button
-                label="Talk to the Assistant"
+                label="Talk to Blockie"
                 icon={Zap}
                 buttonStyle="action"
                 onClick={() => {
                   connectConversation();
                   changeTurnEndType('server_vad');
                 }}
-                style={{
-                  width: '100%',
-                  maxWidth: '28rem',
-                  margin: '0 auto',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem'
-                }}
-                className="start-stop-button"
+                className="btn btn-primary w-full max-w-xs"
               />
             ) : (
               <Button
                 label="End Conversation"
                 icon={X}
-                buttonStyle="regular"
+                buttonStyle="action"
                 onClick={disconnectConversation}
-                style={{
-                  width: '100%',
-                  maxWidth: '28rem',
-                  margin: '0 auto',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem'
-                }}
-                className="start-stop-button"
+                className="btn btn-secondary w-full max-w-xs"
               />
             )}
           </div>

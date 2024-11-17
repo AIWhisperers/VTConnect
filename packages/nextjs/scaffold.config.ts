@@ -17,10 +17,15 @@ const scaffoldConfig = {
         http: ['https://rpc.sepolia.org', 'https://eth-sepolia-public.unifra.io'],
       },
     }},
-    // chains.zircuitTestnet
-    // chains.scrollSepolia,
-    // chains.mantleSepoliaTestnet,
-    // chains.baseSepolia,
+    chains.scrollSepolia,
+    chains.mantleSepoliaTestnet,
+    chains.baseSepolia,
+    // chains.auroraTestnet,
+    chains.flowTestnet,
+    chains.zircuitTestnet,
+    // chains.arbitrumSepolia,
+    // chains.polygonZkEvmTestnet,
+    // chains.worldchainSepolia,
   ],
 
   // The interval at which your front-end polls the RPC servers for new data
